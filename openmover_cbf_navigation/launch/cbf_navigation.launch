@@ -1,0 +1,18 @@
+<launch>
+    <node name="global_planner_handler" pkg="openmover_cbf_navigation" type="global_planner_handler" output="screen" respawn="true">
+        <remap from="global_planner_handler/costmap/costmap" to="openmover/navigation/global_planner/costmap/costmap" />
+        <remap from="global_planner_handler/costmap/costmap_updates" to="openmover/navigation/global_planner/costmap/costmap_updates" />
+        <remap from="global_planner_handler/costmap/footprint" to="openmover/navigation/global_planner/costmap/footprint" />
+        <remap from="global_planner_handler/make_plan" to="openmover/navigation/global_planner/make_plan" />
+        <remap from="global_planner_handler/global_planner/plan" to="openmover/navigation/global_planner/planner/plan" />
+        <remap from="global_planner_handler/global_planner/potential" to="openmover/navigation/global_planner/planner/potential" />
+        <rosparam file="$(find openmover_cbf_navigation)/config/navigation.yaml" command="load" />
+    </node>
+
+    <node name="cbf_local_planner" pkg="openmover_cbf_navigation" type="cbf_local_planner" output="screen">
+        <remap from="map" to="openmover/mapping/map" />
+        <remap from="scan" to="openmover/hardware/lidar/scan" />
+        <remap from="twist" to="openmover/localization/twist" />
+        <rosparam file="$(find openmover_cbf_navigation)/config/navigation.yaml" command="load" />
+    </node>
+</launch>
