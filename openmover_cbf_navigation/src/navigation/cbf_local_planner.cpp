@@ -57,9 +57,9 @@ float max_yaw_vel = 0.5;
 float max_x_acc = 0.8;
 float max_yaw_acc = 0.8;
 float pomega = 10.0;
-float gamma_k = 0.2;
+float gamma_k = 0.8;
 
-float gamma_st = 0.8;
+float gamma_st = 0.5;
 float pomega_st = 10.0;
 float margin_dist_st = 0.0;
 
@@ -77,7 +77,7 @@ bool use_kinematic_limits_sga = true;
 bool use_advanced_evaluation_sga = true;
 float follow_point_weight_sga = 1.0;
 float follow_path_weight_sga = 18.0;
-float gamma_sga = 0.8;
+float gamma_sga = 0.2;
 int max_sim_point_index_sga = 0;
 float chassis_radius_sga = 0.4;
 
@@ -622,7 +622,7 @@ nav_msgs::Path trajectory_simulation(float &vx, float &vyaw,
             {
                 float dist_next = min_dist_between_obstacles(footprint_rect_dynamic_sga, ob);
 
-                if (dist_next < (1 - gamma_sga) * dist_current[ob.uuid])
+                if (dist_next < gamma_sga * dist_current[ob.uuid])
                 {
                     cbf_ok = false;
 
@@ -1084,14 +1084,14 @@ int main(int argc, char **argv)
 
                             if (use_cbf)
                             {
-                                opti.subject_to(h_next >= (1 - omega(i) * gamma_k) * h_current);
+                                opti.subject_to(h_next >= omega(i) * gamma_k * h_current);
                             }
                             else
                             {
-                                opti.subject_to(h_next >= (1 - omega(i) * gamma_k * 2) * h_current);
+                                opti.subject_to(h_current > 0);
                             }
 
-                            opti.set_initial(omega(i), 0.6);
+                            opti.set_initial(omega(i), 1.0);
                         }
                     }
                 }
@@ -1146,7 +1146,7 @@ int main(int argc, char **argv)
                                     // lamb(casadi::Slice(), i) : p0x1
                                     // casadi::MX::mtimes((casadi::MX::mtimes(obs_A, robot_T) - obs_b).T(), lamb(casadi::Slice(), i))) : 1x1
                                     casadi::MX::mtimes((casadi::MX::mtimes(obs_A, robot_T) - obs_b).T(), lamb(casadi::Slice(), i)) >=
-                                (1 - omega(i) * casadi::MX::pow(gamma_st, i + 1)) * cbf_curr + margin_dist_st);
+                                    omega(i) * casadi::MX::pow(gamma_st, i + 1) * cbf_curr + margin_dist_st);
                         }
                         else
                         {
@@ -1178,7 +1178,7 @@ int main(int argc, char **argv)
 
                         opti.set_initial(lamb(casadi::Slice(), i), lamb_curr);
                         opti.set_initial(mu(casadi::Slice(), i), mu_curr);
-                        opti.set_initial(omega(i), 0.5);
+                        opti.set_initial(omega(i), 0.8);
                     }
                 }
 
