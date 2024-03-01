@@ -1146,7 +1146,7 @@ int main(int argc, char **argv)
                                     // lamb(casadi::Slice(), i) : p0x1
                                     // casadi::MX::mtimes((casadi::MX::mtimes(obs_A, robot_T) - obs_b).T(), lamb(casadi::Slice(), i))) : 1x1
                                     casadi::MX::mtimes((casadi::MX::mtimes(obs_A, robot_T) - obs_b).T(), lamb(casadi::Slice(), i)) >=
-                                (1 - omega(i) * casadi::MX::pow(gamma_st, i + 1)) * (cbf_curr - margin_dist_st) + margin_dist_st);
+                                (1 - omega(i) * casadi::MX::pow(gamma_st, i + 1)) * cbf_curr + margin_dist_st);
                         }
                         else
                         {
