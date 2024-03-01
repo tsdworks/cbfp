@@ -12,6 +12,7 @@
 
 using namespace std;
 
+// Obstacle parameterizer
 obstacle_parameterizer obstacle_parameterizer_instance;
 
 geometry_msgs::TwistWithCovarianceStamped odom_twist_data;
@@ -33,7 +34,6 @@ ros::Publisher cmd_vel_pub;
 
 ros::ServiceClient global_planner_client;
 
-// 足迹部分
 geometry_msgs::Polygon footprint_polygon;
 obstacle_description footprint_rect_dynamic;
 obstacle_description footprint_rect_static;
@@ -64,25 +64,25 @@ float pomega_st = 10.0;
 float margin_dist_st = 0.0;
 
 // SGA-DCBF
-float max_x_vel_dwa = 0.3;
-float max_x_acc_dwa = 0.8;
-float min_x_vel_dwa = 0.03;
-float max_yaw_vel_dwa = 0.5;
-float max_yaw_acc_dwa = 0.4;
-float sim_time_dwa = 0.5;
-int sim_vx_space_size_dwa = 20;
-int sim_vyaw_space_size_dwa = 60;
-int trajectory_sim_step_dwa = 50;
-bool use_kinematic_limits_dwa = true;
-bool use_advanced_evaluation_dwa = true;
-float follow_point_weight_dwa = 1.0;
-float follow_path_weight_dwa = 18.0;
-float gamma_dwa = 0.8;
-int max_sim_point_index_dwa = 0;
-float chassis_radius_dwa = 0.4;
+float max_x_vel_sga = 0.3;
+float max_x_acc_sga = 0.8;
+float min_x_vel_sga = 0.03;
+float max_yaw_vel_sga = 0.5;
+float max_yaw_acc_sga = 0.4;
+float sim_time_sga = 0.5;
+int sim_vx_space_size_sga = 20;
+int sim_vyaw_space_size_sga = 60;
+int trajectory_sim_step_sga = 50;
+bool use_kinematic_limits_sga = true;
+bool use_advanced_evaluation_sga = true;
+float follow_point_weight_sga = 1.0;
+float follow_path_weight_sga = 18.0;
+float gamma_sga = 0.8;
+int max_sim_point_index_sga = 0;
+float chassis_radius_sga = 0.4;
 
-int rotation_state_dwa = 0;
-unique_ptr<mover> mover_dwa;
+int rotation_state_sga = 0;
+unique_ptr<mover> mover_sga;
 
 vector<tuple<double, string, int, int, double>> time_list;
 
@@ -240,7 +240,7 @@ void simple_goal_callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
     {
         if (try_count >= 1)
         {
-            ROS_WARN("%s：全局路径规划失败，正在进行第 %d 次重试。", TAG, try_count);
+            ROS_WARN("%s: Global planner error, retrying for %d time(s).", TAG, try_count);
         }
 
         plan_result = global_planner_client.call(make_plan);
@@ -278,7 +278,7 @@ void simple_goal_callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 
         stand = false;
 
-        rotation_state_dwa = 0;
+        rotation_state_sga = 0;
     }
 }
 
@@ -425,7 +425,7 @@ int get_max_sim_distance_point_index()
     {
         float dist = calculate_distance(pose_data.pose.pose, path[i].pose);
 
-        if (dist > max_x_vel_dwa * sim_time_dwa)
+        if (dist > max_x_vel_sga * sim_time_sga)
         {
             ret = (i <= 0 ? 0 : (i - 1));
 
@@ -450,7 +450,7 @@ int get_max_sim_angle_point_index(int point_index)
     {
         auto angle = calc_global_plan_angle(i);
 
-        if (abs(get<0>(angle)) <= max_yaw_vel_dwa * sim_time_dwa)
+        if (abs(get<0>(angle)) <= max_yaw_vel_sga * sim_time_sga)
         {
             ret = i;
             break;
@@ -475,23 +475,23 @@ nav_msgs::Path trajectory_simulation(float &vx, float &vyaw,
     float current_yaw = tf::getYaw(pose_data.pose.pose.orientation);
 
     float current_vx = odom_twist_data.twist.twist.linear.x;
-    float start_search_vx = max(min_x_vel_dwa, current_vx - sim_time * max_x_acc_dwa);
-    float end_search_vx = max(start_search_vx, min(current_vx + sim_time * max_x_acc_dwa, dist / sim_time));
+    float start_search_vx = max(min_x_vel_sga, current_vx - sim_time * max_x_acc_sga);
+    float end_search_vx = max(start_search_vx, min(current_vx + sim_time * max_x_acc_sga, dist / sim_time));
 
-    float delta_search_vx = (end_search_vx - start_search_vx) / (sim_vx_space_size_dwa <= 0 ? 1 : sim_vx_space_size_dwa);
+    float delta_search_vx = (end_search_vx - start_search_vx) / (sim_vx_space_size_sga <= 0 ? 1 : sim_vx_space_size_sga);
     float target_search_vx = start_search_vx;
 
     float current_vyaw = odom_twist_data.twist.twist.angular.z;
-    float start_search_vyaw = current_vyaw - sim_time * max_yaw_acc_dwa;
-    float end_search_vyaw = current_vyaw + sim_time * max_yaw_acc_dwa;
+    float start_search_vyaw = current_vyaw - sim_time * max_yaw_acc_sga;
+    float end_search_vyaw = current_vyaw + sim_time * max_yaw_acc_sga;
 
-    float delta_search_vyaw = (end_search_vyaw - start_search_vyaw) / (sim_vyaw_space_size_dwa <= 0 ? 1 : sim_vyaw_space_size_dwa);
+    float delta_search_vyaw = (end_search_vyaw - start_search_vyaw) / (sim_vyaw_space_size_sga <= 0 ? 1 : sim_vyaw_space_size_sga);
     float target_search_vyaw = start_search_vyaw;
 
-    float delta_sim_time = sim_time / (trajectory_sim_step_dwa <= 0 ? 1 : trajectory_sim_step_dwa);
+    float delta_sim_time = sim_time / (trajectory_sim_step_sga <= 0 ? 1 : trajectory_sim_step_sga);
 
-    float delta_current_search_vx = max_x_acc_dwa * delta_sim_time;
-    float delta_current_search_vyaw = max_yaw_acc_dwa * delta_sim_time;
+    float delta_current_search_vx = max_x_acc_sga * delta_sim_time;
+    float delta_current_search_vyaw = max_yaw_acc_sga * delta_sim_time;
 
     map<string, float> dist_current;
 
@@ -502,7 +502,7 @@ nav_msgs::Path trajectory_simulation(float &vx, float &vyaw,
 
     float max_score = -INFINITY;
 
-    for (int i = -1; i < sim_vx_space_size_dwa; i++)
+    for (int i = -1; i < sim_vx_space_size_sga; i++)
     {
         if (i == -1)
         {
@@ -513,7 +513,7 @@ nav_msgs::Path trajectory_simulation(float &vx, float &vyaw,
             target_search_vx = start_search_vx;
         }
 
-        for (int j = -1; j < sim_vyaw_space_size_dwa; j++)
+        for (int j = -1; j < sim_vyaw_space_size_sga; j++)
         {
             if (j == -1)
             {
@@ -524,8 +524,8 @@ nav_msgs::Path trajectory_simulation(float &vx, float &vyaw,
                 target_search_vyaw = start_search_vyaw;
             }
 
-            float current_search_vx = use_kinematic_limits_dwa ? odom_twist_data.twist.twist.linear.x : target_search_vx;
-            float current_search_vyaw = use_kinematic_limits_dwa ? odom_twist_data.twist.twist.angular.z : target_search_vyaw;
+            float current_search_vx = use_kinematic_limits_sga ? odom_twist_data.twist.twist.linear.x : target_search_vx;
+            float current_search_vyaw = use_kinematic_limits_sga ? odom_twist_data.twist.twist.angular.z : target_search_vyaw;
             float last_search_vx = current_search_vx;
             float last_search_vyaw = current_search_vyaw;
 
@@ -536,9 +536,9 @@ nav_msgs::Path trajectory_simulation(float &vx, float &vyaw,
             current_pose.pose = pose_data.pose.pose;
             current_trajectory.poses.push_back(current_pose);
 
-            for (int k = 0; k < trajectory_sim_step_dwa; k++)
+            for (int k = 0; k < trajectory_sim_step_sga; k++)
             {
-                if (use_kinematic_limits_dwa)
+                if (use_kinematic_limits_sga)
                 {
                     if (current_search_vx < target_search_vx)
                     {
@@ -603,26 +603,26 @@ nav_msgs::Path trajectory_simulation(float &vx, float &vyaw,
 
             geometry_msgs::PoseWithCovarianceStamped pose_next;
             pose_next.pose.pose = current_trajectory.poses.back().pose;
-            auto footprint_tranform_dwa = transform_footprint(pose_next, footprint_polygon);
+            auto footprint_tranform_sga = transform_footprint(pose_next, footprint_polygon);
 
-            for (int i = 0; i < footprint_tranform_dwa.points.size(); i++)
+            for (int i = 0; i < footprint_tranform_sga.points.size(); i++)
             {
                 obstacle_line line;
-                line.p0 = footprint_tranform_dwa.points[i];
-                line.p1 = footprint_tranform_dwa.points[(i + 1) % footprint_tranform_dwa.points.size()];
+                line.p0 = footprint_tranform_sga.points[i];
+                line.p1 = footprint_tranform_sga.points[(i + 1) % footprint_tranform_sga.points.size()];
 
                 lines_dynamic.push_back(line);
             }
 
-            auto footprint_rect_dynamic_dwa = create_obstacle(lines_dynamic);
+            auto footprint_rect_dynamic_sga = create_obstacle(lines_dynamic);
 
             bool cbf_ok = true;
 
             for (const auto &ob : obs)
             {
-                float dist_next = min_dist_between_obstacles(footprint_rect_dynamic_dwa, ob);
+                float dist_next = min_dist_between_obstacles(footprint_rect_dynamic_sga, ob);
 
-                if (dist_next < (1 - gamma_dwa) * dist_current[ob.uuid])
+                if (dist_next < (1 - gamma_sga) * dist_current[ob.uuid])
                 {
                     cbf_ok = false;
 
@@ -643,13 +643,13 @@ nav_msgs::Path trajectory_simulation(float &vx, float &vyaw,
             if (max_sim_point_index == path.size() - 1)
             {
                 current_score =
-                    1.0f / (follow_point_weight_dwa * dist_to_point);
+                    1.0f / (follow_point_weight_sga * dist_to_point);
             }
             else
             {
-                float mean_dist_to_path = use_advanced_evaluation_dwa ? 0 : INFINITY;
+                float mean_dist_to_path = use_advanced_evaluation_sga ? 0 : INFINITY;
 
-                if (!use_advanced_evaluation_dwa)
+                if (!use_advanced_evaluation_sga)
                 {
                     for (int k = current_point_in_path; k < path.size(); k++)
                     {
@@ -711,8 +711,8 @@ nav_msgs::Path trajectory_simulation(float &vx, float &vyaw,
                 }
 
                 current_score =
-                    1.0f / ((follow_point_weight_dwa * dist_to_point + follow_path_weight_dwa * mean_dist_to_path) /
-                            (follow_point_weight_dwa + follow_path_weight_dwa + 1e-5));
+                    1.0f / ((follow_point_weight_sga * dist_to_point + follow_path_weight_sga * mean_dist_to_path) /
+                            (follow_point_weight_sga + follow_path_weight_sga + 1e-5));
             }
 
             if (current_score >= max_score)
@@ -740,7 +740,7 @@ bool rotate(float angle = 0.0f, float tolerance = 0.0f, float max_yaw_vel = 0.0f
 {
     bool ret = false;
 
-    if (rotation_state_dwa == 0)
+    if (rotation_state_sga == 0)
     {
         cmd_vel_data.linear.x = 0;
         cmd_vel_data.angular.z = 0;
@@ -748,41 +748,41 @@ bool rotate(float angle = 0.0f, float tolerance = 0.0f, float max_yaw_vel = 0.0f
         if (abs(odom_twist_data.twist.twist.linear.x) <= 0.01 &&
             abs(odom_twist_data.twist.twist.angular.z) <= 0.01)
         {
-            mover_dwa->reset_state();
-            mover_dwa->set_kinematic_params(max_x_vel_dwa, max_yaw_vel_dwa);
-            mover_dwa->set_tolerance_params(0.01, tolerance);
+            mover_sga->reset_state();
+            mover_sga->set_kinematic_params(max_x_vel_sga, max_yaw_vel_sga);
+            mover_sga->set_tolerance_params(0.01, tolerance);
 
-            mover_dwa->make_plan(pose_data, 0, angle, true, yaw_servo_mode);
+            mover_sga->make_plan(pose_data, 0, angle, true, yaw_servo_mode);
 
-            mover_dwa->start_session();
+            mover_sga->start_session();
 
-            rotation_state_dwa = 1;
+            rotation_state_sga = 1;
         }
     }
-    else if (rotation_state_dwa == 1)
+    else if (rotation_state_sga == 1)
     {
         openmover_msgs::obstacle obs;
         obs.size = 0;
 
-        auto state = mover_dwa->loop(pose_data, odom_twist_data, obs);
+        auto state = mover_sga->loop(pose_data, odom_twist_data, obs);
 
         if (state == navigation_state::REACHED)
         {
-            mover_dwa->reset_state();
+            mover_sga->reset_state();
 
             cmd_vel_data.linear.x = 0;
             cmd_vel_data.angular.z = 0;
 
-            rotation_state_dwa = 2;
+            rotation_state_sga = 2;
         }
         else
         {
-            cmd_vel_data = mover_dwa->get_current_twist();
+            cmd_vel_data = mover_sga->get_current_twist();
         }
     }
-    else if (rotation_state_dwa == 2)
+    else if (rotation_state_sga == 2)
     {
-        rotation_state_dwa = 0;
+        rotation_state_sga = 0;
 
         ret = true;
     }
@@ -864,7 +864,7 @@ int main(int argc, char **argv)
         convert_obstacle_to_matrix(obstacle);
     }
 
-    mover_dwa = unique_ptr<mover>(new mover(max_x_vel_dwa, min_x_vel_dwa, max_x_acc_dwa, max_yaw_vel_dwa, 0.1, max_yaw_acc_dwa,
+    mover_sga = unique_ptr<mover>(new mover(max_x_vel_sga, min_x_vel_sga, max_x_acc_sga, max_yaw_vel_sga, 0.1, max_yaw_acc_sga,
                                             0.05,
                                             0.05,
                                             1.0,
@@ -969,13 +969,13 @@ int main(int argc, char **argv)
                     stand = true;
                 }
 
-                if (rotation_state_dwa == 0)
+                if (rotation_state_sga == 0)
                 {
                     float angle_to_goal = (float)angles::shortest_angular_distance(
                         tf::getYaw(pose_data.pose.pose.orientation), tf::getYaw(goal.orientation));
                     float goal_yaw = tf::getYaw(goal.orientation);
 
-                    rotate(goal_yaw, 0.01, max_yaw_vel_dwa, true);
+                    rotate(goal_yaw, 0.01, max_yaw_vel_sga, true);
                 }
                 else if (rotate())
                 {
@@ -990,7 +990,7 @@ int main(int argc, char **argv)
 
                     stand = false;
 
-                    rotation_state_dwa = 0;
+                    rotation_state_sga = 0;
                 }
 
                 cmd_vel_pub.publish(cmd_vel_data);
@@ -1039,9 +1039,9 @@ int main(int argc, char **argv)
 
                 for (int i = 0; i < horizon; ++i)
                 {
-                    opti.subject_to(x(0, i + 1) == x(0, i) + u(0, i) * cos(x(2, i)) * dt); // x坐标
-                    opti.subject_to(x(1, i + 1) == x(1, i) + u(0, i) * sin(x(2, i)) * dt); // y坐标
-                    opti.subject_to(x(2, i + 1) == x(2, i) + u(1, i) * dt);                // 朝向
+                    opti.subject_to(x(0, i + 1) == x(0, i) + u(0, i) * cos(x(2, i)) * dt);
+                    opti.subject_to(x(1, i + 1) == x(1, i) + u(0, i) * sin(x(2, i)) * dt);
+                    opti.subject_to(x(2, i + 1) == x(2, i) + u(1, i) * dt);
                 }
 
                 if (static_obs.size() < 3)
@@ -1329,21 +1329,21 @@ int main(int argc, char **argv)
             }
             else
             {
-                run_type = "dwa";
+                run_type = "sga";
 
-                max_sim_point_index_dwa = get_max_sim_angle_point_index(get_max_sim_distance_point_index());
+                max_sim_point_index_sga = get_max_sim_angle_point_index(get_max_sim_distance_point_index());
 
                 float vx = 0, vyaw = 0;
 
                 auto current_traj = trajectory_simulation(vx, vyaw,
-                                                          max_sim_point_index_dwa,
-                                                          max_x_vel_dwa, max_yaw_vel_dwa,
-                                                          sim_time_dwa,
+                                                          max_sim_point_index_sga,
+                                                          max_x_vel_sga, max_yaw_vel_sga,
+                                                          sim_time_sga,
                                                           static_obs);
 
-                if (use_kinematic_limits_dwa)
+                if (use_kinematic_limits_sga)
                 {
-                    volatile float combined_vel = abs(vx) + abs(vyaw * chassis_radius_dwa);
+                    volatile float combined_vel = abs(vx) + abs(vyaw * chassis_radius_sga);
 
                     if (combined_vel > max_x_vel)
                     {
@@ -1353,9 +1353,9 @@ int main(int argc, char **argv)
                     }
                 }
 
-                if (abs(vx) < min_x_vel_dwa)
+                if (abs(vx) < min_x_vel_sga)
                 {
-                    vx = copysign(min_x_vel_dwa, vx);
+                    vx = copysign(min_x_vel_sga, vx);
                 }
 
                 cmd_vel_data.linear.x = vx;
